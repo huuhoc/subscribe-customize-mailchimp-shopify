@@ -1,0 +1,125 @@
+$.cookie = function(key, value, options) {
+    if (arguments.length > 1 && (!/Object/.test(Object.prototype.toString.call(value)) || value === null || value === undefined)) {
+        options = $.extend({}, options);
+        if (value === null || value === undefined) {
+            options.expires = -1
+        }
+        if (typeof options.expires === 'number') {
+            var days = options.expires,
+                t = options.expires = new Date();
+            t.setDate(t.getDate() + days)
+        }
+        value = String(value);
+        return (document.cookie = [encodeURIComponent(key), '=', options.raw ? value : encodeURIComponent(value), options.expires ? '; expires=' + options.expires.toUTCString() : '', options.path ? '; path=' + options.path : '', options.domain ? '; domain=' + options.domain : '', options.secure ? '; secure' : ''].join(''))
+    }
+    options = value || {};
+    var decode = options.raw ? function(s) {
+        return s
+    } : decodeURIComponent;
+    var pairs = document.cookie.split('; ');
+    for (var i = 0, pair; pair = pairs[i] && pairs[i].split('='); i++) {
+        if (decode(pair[0]) === key) return decode(pair[1] || '')
+    }
+    return null
+}
+
+window.theme = window.theme || {};
+
+theme.openPopup = function() {
+  var date = new Date();
+    var minutes = 60;
+    date.setTime(date.getTime() + (minutes * 60 * 1000));
+    if ($.cookie('popupSubscribeStatus') != 'closed') {
+    $.magnificPopup.open({
+      items: {
+        src: '#subscribe-popup',
+      },
+      closeMarkup: '<button type="button" class="mfp-close"><i class="icon ss-icon-menuclose"></i></button>',
+      mainClass: 'mfp-subscribe',
+      fixedContentPos: true,
+      callbacks: {
+          beforeOpen: function() { $('html').addClass('mfp-helper'); },
+          close: function() {
+            $('html').removeClass('mfp-helper');
+            $.cookie("popupSubscribeStatus", "closed", {
+                'expires': date,
+                'path': '/'
+            })
+          },
+          open: function() {
+            $('.mfp-close').on('click',function(event){
+              event.preventDefault();
+              $.magnificPopup.close();
+            });
+          }
+        }
+    });
+  }
+
+  $(document).on('click', '.mfp-close, .subscribe-popup_thanks a', function (e) {
+    $.magnificPopup.close();
+  });
+
+}
+
+theme.ajaxMailChimpForm = function($form, $resultElement){
+  $form.submit(function(e) {
+    e.preventDefault();
+    if (!theme.isValidEmail($form)) {
+      var error =  "A valid email address must be provided.";
+      $resultElement.html(error);
+      $resultElement.css("color", "red");
+    } else {
+      $resultElement.css("color", "black");
+      $resultElement.html("Subscribing...");
+      theme.submitSubscribeForm($form, $resultElement);
+    }
+  });
+}
+
+// Validate the email address in the form
+theme.isValidEmail = function($form) {
+  var email = $form.find("input[type='email']").val();
+  if (!email || !email.length) {
+      return false;
+  } else if (email.indexOf("@") == -1) {
+      return false;
+  }
+  return true;
+}
+
+theme.submitSubscribeForm =function($form, $resultElement) {
+  let url_action = $form.attr("action").replace('/post?', '/post-json?').concat('&c=?');
+  $.ajax({
+    type: "POST",
+    url: url_action,
+    data: $form.serialize(),
+    cache: false,
+    dataType: "jsonp",
+    jsonp: "c", // trigger MailChimp to return a JSONP response
+    contentType: "application/json; charset=utf-8",
+    error: function (resp, text) {
+      console.log('mailchimp ajax submit error: ' + text);
+    },
+    success: function(data){
+      if (data.result != "success") {
+        var message = data.msg || "Sorry. Unable to subscribe. Please try again later.";
+        $resultElement.css("color", "red");
+        if (data.msg && data.msg.indexOf("already subscribed") >= 0) {
+          message = '';
+          $('.subscribe-popup_content').addClass('hide');
+          $('.subscribe-popup_thanks').removeClass('hide');
+        }
+        $resultElement.html(message);
+      } else {
+        $('.subscribe-popup_content').addClass('hide');
+        $('.subscribe-popup_thanks').removeClass('hide');
+      }
+    }
+  });
+}
+
+$(document).ready(function(){
+  theme.openPopup();
+  theme.ajaxMailChimpForm($("#subscribe-form"), $("#subscribe-result"));
+});
